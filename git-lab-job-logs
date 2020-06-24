@@ -1,0 +1,8 @@
+#! /usr/bin/env bash
+set -euo pipefail
+eval $(git-lab-config)
+GITLAB_PROJECT_ID=$(git-lab-metadata | jq '.id')
+
+curl --location \
+	--header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
+	"${GITLAB_API_ROOT}/projects/${GITLAB_PROJECT_ID}/jobs/${1}/trace"

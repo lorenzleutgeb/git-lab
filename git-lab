@@ -1,0 +1,38 @@
+#! /usr/bin/env bash
+
+case $1 in
+	config)
+		git-lab-config
+		;;
+	jobs)
+		git-lab-jobs
+		;;
+	jobs-csv)
+		git-lab-jobs-csv
+		;;
+	hook)
+		git-lab-hook
+		;;
+	log)
+		git-lab-job-logs $2
+		;;
+	metadata)
+		git-lab-metadata
+		;;
+	mr)
+		git-lab-mr
+		;;
+	pod)
+		git-lab-pod $2
+		;;
+	sync)
+		git-lab-sync
+		;;
+	whoami)
+		git-lab-whoami
+		;;
+	*)
+		echo "Unknown subcommand."
+		exit 1
+		;;
+esac

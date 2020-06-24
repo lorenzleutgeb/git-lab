@@ -1,0 +1,16 @@
+#! /usr/bin/env bash
+set -euo pipefail
+eval $(git-lab-config)
+GITLAB_PROJECT_ID=$(git-lab-metadata | jq '.id')
+
+ORIGIN=$(git remote get-url origin)
+ORIGIN_PATH=${ORIGIN#"git@gitlab.org:"}
+ORIGIN_PATH_WITHOUT_EXTENSION=${ORIGIN_PATH%".git"}
+SUFFIX=${ORIGIN_PATH_WITHOUT_EXTENSION//\//%2F}
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+curl \
+	--location "${GITLAB_API_ROOT}/projects/${GITLAB_PROJECT_ID}/merge_requests?source_branch=${BRANCH}" \
+	--header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
+| jq '.[0]' \
+

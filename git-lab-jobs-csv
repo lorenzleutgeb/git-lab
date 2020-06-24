@@ -1,0 +1,25 @@
+#! /usr/bin/env bash
+set -euo pipefail
+eval $(git-lab-config)
+export GITLAB_PROJECT_ID=$(git-lab-metadata | jq '.id')
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+curl \
+	--silent \
+	--globoff \
+	--header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
+	--location "${GITLAB_API_ROOT}/projects/${GITLAB_PROJECT_ID}/jobs?scope[]=failed&scope[]=success" \
+| jq -f "$DIR/jobs.jq" > jobs.json
+
+rm -f pods.json
+touch pods.json
+
+for JOB_ID in $(cat jobs.json | jq '. | map(select(.runner == 36)) | .[].id')
+do
+	echo "{ \"id\": $JOB_ID, \"pod\": $(git-lab-pod $JOB_ID) }" >> pods.json
+done
+
+jq --argfile jobs jobs.json '[. + $jobs | group_by(.id) | .[] | add]' --slurp < pods.json > jobs-with-pods.json
+jq -r 'map(to_entries | map(.value) | @csv) | join("\n")' < jobs-with-pods.json > jobs-with-pods.csv
+

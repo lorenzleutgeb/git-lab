@@ -1,0 +1,47 @@
+#! /usr/bin/env bash
+set -euo pipefail
+eval $(git-lab-config)
+GITLAB_PROJECT_ID=$(git-lab-metadata | jq '.id')
+
+PAGE=1
+TOTAL_PAGES=0
+
+HEADERS=$(mktemp "git-lab-jobs-headers-XXXX")
+PROJECTS=$(mktemp -u "git-lab-jobs-XXXX")
+
+# Outer loop to handle pagination
+# (one iteration corresponds to one page).
+j=0
+while true
+do
+	j=$(expr $j + 1)
+
+	curl \
+	 	--location "${GITLAB_API_ROOT}/projects/${GITLAB_PROJECT_ID}/jobs?scope[]=failed&scope[]=success&per_page=100&page=${PAGE}" \
+		--header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
+		--dump-header $HEADERS \
+		--silent \
+		>> $PROJECTS
+
+	TOTAL_PAGES=$(grep -i total-pages $HEADERS | cut -d' ' -f2)
+	rm -f $HEADERS
+
+	if [ "$PAGE" = "1000" ]
+	then
+		echo "Forcibly stopping at 1000 pages. You'll have to patch the code to go beyond."
+		break
+	fi
+	if [ "$PAGE" = "$TOTAL_PAGES" ]
+	then
+		break
+	else
+		echo "${PAGE}/${TOTAL_PAGES}"
+	fi
+
+	PAGE=$(expr $PAGE + 1)
+
+done
+
+jq -s 'add' < $PROJECTS > jobs.json
+
+echo "List of jobs written to 'jobs.json'."

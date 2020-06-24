@@ -1,0 +1,21 @@
+#! /usr/bin/env bash
+set -euo pipefail
+eval $(git-lab-config)
+GITLAB_PROJECT_ID=$(git-lab-metadata | jq '.id')
+
+# NOTE: We disable "exit-on-error", because we want to print "null".
+set +e
+POD=$(curl --location \
+	--silent \
+	--no-buffer \
+	--range 1024 \
+	--header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
+	"${GITLAB_API_ROOT}/projects/${GITLAB_PROJECT_ID}/jobs/${1}/trace" \
+| grep -m 1 -oE "Running on ([a-z0-9-]*)" | cut -d' ' -f3)
+
+if [ $? -eq 1 ]
+then
+	echo "null"
+else
+	echo "\"$POD\""
+fi

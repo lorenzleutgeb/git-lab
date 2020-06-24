@@ -1,0 +1,28 @@
+#! /usr/bin/env bash
+set -euo pipefail
+eval $(git-lab-config)
+
+ROOT=$(git rev-parse --show-toplevel)
+TARGET=${ROOT}/.git-lab-metadata.json
+
+if [ -f "$TARGET" ]
+then
+	cat $TARGET
+	exit 0
+fi
+
+# TODO(lorenz.leutgeb): Remove hardcoded hostname.
+# TODO(lorenz.leutgeb): Decide which endpoint to use based on remote URL.
+
+ORIGIN=$(git remote get-url origin)
+ORIGIN_PATH=${ORIGIN#"git@gitlab.org:"}
+ORIGIN_PATH_WITHOUT_EXTENSION=${ORIGIN_PATH%".git"}
+SUFFIX=${ORIGIN_PATH_WITHOUT_EXTENSION//\//%2F}
+
+curl \
+	--silent \
+	--location "${GITLAB_API_ROOT}/projects/${SUFFIX}" \
+	--header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
+| jq \
+| tee ${ROOT}/.git-lab-metadata.json
+

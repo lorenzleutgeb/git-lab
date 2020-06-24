@@ -1,0 +1,97 @@
+#! /usr/bin/env bash
+set -euo pipefail
+eval $(git-lab-config)
+
+# Adjust this as you like.
+# If you're using ghq (see https://github.com/x-motemen/ghq)
+# then you'll likely want BASE=$GHQ_ROOT/$GITLAB_HOSTNAME
+BASE=$HOME/src/$GITLAB_HOSTNAME
+
+PAGE=1
+TOTAL_PAGES=0
+
+HEADERS=$(mktemp "git-lab-sync-headers-XXXX")
+PROJECTS_BASE=$(mktemp -u "git-lab-sync-projects-XXXX")
+
+# Outer loop to handle pagination
+# (one iteration corresponds to one page).
+j=0
+while true
+do
+	j=$(expr $j + 1)
+	PROJECTS=${PROJECTS_BASE}-${j}
+
+	curl \
+		--silent \
+		--location "${GITLAB_API_ROOT}/projects?archived=false&simple=true&per_page=100&min_access_level=10&page=${PAGE}" \
+		--header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
+		--dump-header $HEADERS \
+		> $PROJECTS
+
+	cat $HEADERS \
+		| awk -v RS='\r\n' '/X-Total-Pages/ { TOTAL_PAGES = $2 } END { printf("%s\n", TOTAL_PAGES) }' \
+		| read TOTAL_PAGES
+
+	LEN=$(jq length < $PROJECTS)
+
+	if [ "$LEN" -eq 0 ]
+	then
+		exit 0
+	fi
+
+	# Inner loop to handle syncing
+	# (one iteration corresponds to one repository).
+	for i in $(seq 0 $(expr $LEN - 1))
+	do
+		REL=$(jq .[$i].path_with_namespace < $PROJECTS | tr -d '"')
+		REPO=$BASE/$REL
+		MAIN_BRANCH=$(jq .[$i].default_branch < $PROJECTS | tr -d '"')
+		SSH_URL_TO_REPO=$(jq .[$i].ssh_url_to_repo < $PROJECTS | tr -d '"')
+
+		if [ "$MAIN_BRANCH" = "null" ]
+		then
+			echo "SKIP $REL: default branch is null"
+			continue
+		fi
+
+		if [ -d $REPO ]
+		then
+			ORIGIN=$(git -C $REPO remote get-url origin)
+			if [ "$ORIGIN" != "$SSH_URL_TO_REPO" ]
+			then
+				echo "SKIP $REL: origin is '$ORIGIN' and does not match '$SSH_URL_TO_REPO'"
+				continue
+			fi
+
+			if [ ! -z "$(git -C $REPO status --porcelain)" ]
+			then
+				echo "SKIP $REL: dirty"
+				continue
+			fi
+
+			git -C $REPO fetch --quiet origin > /dev/null
+
+			if ! git -C $REPO ls-remote --exit-code --heads origin $MAIN_BRANCH > /dev/null
+			then
+				echo "SKIP $REL: origin/$MAIN_BRANCH not found"
+				continue
+			fi
+
+			# Checking out default branch and resetting to remote version, because working directory is clean!
+			git -C $REPO checkout --quiet $MAIN_BRANCH
+			git -C $REPO reset --quiet --hard origin/$MAIN_BRANCH
+			echo " OK  $REL"
+		else
+			git clone $SSH_URL_TO_REPO $REPO
+			echo " OK  $REL"
+		fi
+	done
+
+	if [ "$PAGE" = "$TOTAL_PAGES" ]
+	then
+		exit 0
+	fi
+
+	PAGE=$(expr $PAGE + 1)
+
+done

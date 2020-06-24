@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Generate a token at /profile/personal_access_tokens
+# and enter it here. Alternatively expose it as an envirnment variable.
+
+CONFIG=${XDG_CONFIG_HOME:-$HOME/.config}/git-lab/config.json
+
+ENDPOINT=$(jq -r '.defaultEndpoint' < $CONFIG)
+echo export GITLAB_ENDPOINT=\"$ENDPOINT\"
+echo export GITLAB_HOSTNAME=$(jq ".endpoints.${ENDPOINT}.host" < $CONFIG)
+echo export GITLAB_API_ROOT=$(jq ".endpoints.${ENDPOINT} | \"\\(.protocol)://\\(.host)\\(.root)\"" < $CONFIG)
+echo export GITLAB_API_TOKEN=$(jq ".endpoints.${ENDPOINT}.token" < $CONFIG)

@@ -1,0 +1,44 @@
+#! /usr/bin/env bash
+set -euo pipefail
+eval $(git-lab-config)
+GITLAB_PROJECT_ID=$(git-lab-metadata | jq '.id')
+
+HOOKS="${GITLAB_API_ROOT}/projects/${GITLAB_PROJECT_ID}/hooks"
+
+SERVICE=gitlab-monitoring
+SECRET=GITLAB_MONITORING_GITLAB_WEBHOOK_TOKEN
+
+GITLAB_MONITORING_TOKEN=$(gcloud secrets versions access latest --secret=${SECRET})
+GITLAB_MONITORING_URL=$(gcloud run services describe --platform ${PLATFORM:-managed} --region ${REGION:-europe-west1} --format json $SERVICE | jq -r '.status.address.url')
+
+curl \
+	--silent \
+	--location "$HOOKS" \
+	--header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
+	--output hooks.json
+
+if jq --exit-status ".[] | select(.url == \"$GITLAB_MONITORING_URL\")" < hooks.json
+then
+	# NOTE(lorenz.leutgeb): `--force` or `--update-existin` would go here...
+	echo "There is at least one webhook for the URL '$GITLAB_MONITORING_URL' configured (see above). Will not perform any changes. Please resolve this manually."
+	exit 1
+fi
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+jq -n --arg url "$GITLAB_MONITORING_URL" --arg token "$GITLAB_MONITORING_TOKEN" -f "$DIR/hook-job.jq" \
+| tee hook.json \
+| curl \
+	--silent \
+	--request POST \
+	--location "$HOOKS" \
+	--header "Content-Type: application/json" \
+	--header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
+	--data @-
+
+# Add Pipeline Analyzer as member.
+
+# NOTE(lorenz.leutgeb): This bears a security risk. If the ID ever changes, we're in trouble.
+GITLAB_USER_ID=162
+
+curl --request POST --header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" --data "user_id=${GITLAB_USER_ID}&access_level=30" "${GITLAB_API_ROOT}/projects/${GITLAB_PROJECT_ID}/members"

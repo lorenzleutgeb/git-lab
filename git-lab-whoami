@@ -1,0 +1,9 @@
+#! /usr/bin/env bash
+set -euo pipefail
+eval $(git-lab-config)
+
+curl \
+	--location "${GITLAB_API_ROOT}/user" \
+	--header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
+| jq '.'
+
